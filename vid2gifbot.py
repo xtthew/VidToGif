@@ -28,14 +28,21 @@ class Video:
                     pass
 
     def dlVideo(self, url):
-        cmd = "wget -t 2 "+url
-        os.system(cmd)
+        v = requests.get(url+'DASH_480') #Try 480P Video
+        v = requests.get(url+'DASH_360') if v.status_code == 403 else v #Try 360P Video
+        vFile = open('video.mp4','wb')
+        vFile.write(v.content)
         return 'video.mp4'
 
     def findVideo(self):
-        os.system('wget https://reddit.com'+self.source+'.json -O video.json')
-        jsonFile = open('video.json', 'r')
-        jsonData = json.loads(jsonFile.read())
+        response = requests.get('https://reddit.com'+self.source+'.json')
+        if response.status_code == 429:
+            print(str(response.status_code)+" Response Code. Waiting 1 minute.")
+            sleep(60)
+            response = requests.get('https://reddit.com'+self.source+'.json')
+        if response.status_code != 200:
+            return "Failed"
+        jsonData = json.loads(response.content)
         if self.searchJSON('id', jsonData):
             linkID = self.searchJSON('id', jsonData)
         elif self.searchJSON('fallback_url', jsonData):
@@ -43,8 +50,7 @@ class Video:
             linkID = self.searchJSON('fallback_url', jsonData).split('/')[3]
         else:
             print("No 'fallback_url' tag")
-        url = 'v.redd.it/'+linkID+'/DASH_480 -O video.mp4'
-        jsonFile.close()
+        url = 'https://v.redd.it/'+linkID+'/'
         return self.dlVideo(url)
 
 
@@ -75,7 +81,6 @@ class Gif:
                 imgurJSON = open('imgur.json', 'r')
                 imgurDict = json.loads(imgurJSON.read())
                 status = imgurDict['status']
-                print('Return Status: '+str(status))
                 url = imgurDict['data']['link'] if status == 200 else "Failed"
         return url
 
@@ -84,30 +89,31 @@ class Gif:
             os.remove('video.gif')
             os.remove('video.mp4')
             os.remove('imgur.json')
-            os.remove('video.json')
             os.remove(gif)
         except Exception as e:
             print(e)
 
 class Initialize:
     def Run(self):
-        reddit = praw.Reddit('vidtogif')
-        for mention in reddit.inbox.mentions(limit=25):
-            if mention.new:
-                # banned subreddits: funny, trashy
-                submission = reddit.submission(id=mention.submission)
-                video = Video(submission.permalink)
-                gif = Gif(video.findVideo())
-                link = gif.makeGif(str(mention.submission))
-                try:
-                    if link == "Failed":
-                        mention.reply('Sorry, I could not post the GIF to Imgur. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)')
-                    else:
-                        mention.reply('Here is a [Link]('+link+') to the GIF that you requested.\n\n Right now I only do the first 5 seconds.\n\n^(I am a bot.)')
-                except Exception as e:
-                    print(e)
-                mention.mark_read()
-                sleep(600) #Sleep for ten minutes if new account
+        try:
+            reddit = praw.Reddit('vidtogif')
+            for mention in reddit.inbox.mentions(limit=25):
+                if mention.new:
+                    # banned subreddits: funny, trashy
+                    submission = reddit.submission(id=mention.submission)
+                    video = Video(submission.permalink)
+                    gif = Gif(video.findVideo())
+                    link = "Failed" if gif == "Failed" else gif.makeGif(str(mention.submission))
+                    try:
+                        if link == "Failed":
+                            mention.reply('Sorry, I could not post the GIF to Imgur. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)')
+                        else:
+                            mention.reply('Here is a [Link]('+link+') to the GIF that you requested.\n\n Right now I only do the first 5 seconds.\n\n^(I am a bot.)')
+                    except Exception as e:
+                        print(e)
+                    mention.mark_read()
+        except Exception as e:
+            print(e)
 
 bot = Initialize()
 
