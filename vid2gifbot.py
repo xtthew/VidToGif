@@ -37,13 +37,13 @@ class Video:
         vFile.write(v.content)
         return 'video.mp4'
 
-    def findVideo(self):
-        response = requests.get('https://reddit.com'+self.source+'.json')
-        if response.status_code == 429:
-            print(str(response.status_code)+" Response Code. Waiting 1 minute.")
-            sleep(60)
-            response = requests.get('https://reddit.com'+self.source+'.json')
-        if response.status_code != 200:
+    def findVideo(self, userAgent):
+        timeout = 3
+        response = requests.get('https://reddit.com'+self.source+'.json', headers = {'User-agent': userAgent})
+        for _ in range(timeout):
+            if not response.status_code == 200:
+                response = requests.get('https://reddit.com'+self.source+'.json', headers = {'User-agent': userAgent})
+        if not response.status_code == 200:
             return "Failed"
         jsonData = json.loads(response.content)
         if self.searchJSON('id', jsonData):
@@ -97,29 +97,43 @@ class Gif:
             print(e)
 
 class Initialize:
+    def __init__(self, userName, userAgent):
+        self.userName = userName
+        self.userAgent = userAgent
+    
+    def checkComments(self, commentID):
+        sleep(10) # Time for comment to propagate
+        timeout = 3
+        response = requests.get('https://www.reddit.com/api/info.json?id=t1_'+commentID, headers = {'User-agent': self.userAgent})
+        for _ in range(timeout):
+            if not response.status_code == 200:
+                response = requests.get('https://www.reddit.com/api/info.json?id=t1_'+commentID, headers = {'User-agent': self.userAgent})
+        jsonData = json.loads(response.content)
+        author = jsonData['data']['children'][0]['data']['author']
+        return author
+    
     def Run(self):
         try:
-            reddit = praw.Reddit('vidtogif')
+            reddit = praw.Reddit(self.userName)
             for mention in reddit.inbox.mentions(limit=25):
                 if mention.new:
-                    # banned subreddits: funny, trashy
                     submission = reddit.submission(id=mention.submission)
                     video = Video(submission.permalink)
-                    gif = Gif(video.findVideo())
-                    link = "Failed" if gif == "Failed" else gif.makeGif(str(mention.submission))
+                    gif = Gif(video.findVideo(self.userAgent))
+                    link = gif.makeGif(str(mention.submission))
                     try:
-                        if link == "Failed":
-                            mention.reply('Sorry, I could not process your request. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)')
-                        else:
-                            mention.reply('Here is a [Link]('+link+') to the GIF that you requested.\n\n Right now I only do the first 5 seconds.\n\n^(I am a bot.)')
+                        response = 'Sorry, I could not process your request. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)' if link == "Failed" else 'Here is a [Link]('+link+') to the GIF that you requested.\n\n Right now I only do the first 5 seconds.\n\n^(I am a bot.)'
+                        author = self.checkComments(str(mention.reply(response)))
+                        if not author == self.userName:
+                            reddit.redditor(str(mention.author)).message('GIF Request', response+"\n\n *You are getting this message, because I am unable to comment in the subreddit you tagged me in.*")
                     except Exception as e:
                         print(e)
                     mention.mark_read()
         except Exception as e:
             print(e)
 
-bot = Initialize()
+bot = Initialize('vidtogif', 'Linux:vidtogif:v0.0.1 (by u/xtthew)')
 
-while True:
+while True: 
     bot.Run()
     sleep(60)
