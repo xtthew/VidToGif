@@ -30,6 +30,9 @@ class Video:
     def dlVideo(self, url):
         v = requests.get(url+'DASH_480') #Try 480P Video
         v = requests.get(url+'DASH_360') if v.status_code == 403 else v #Try 360P Video
+        v = requests.get(url+'DASH_240') if v.status_code == 403 else v #Try 240P Video
+        if v.status_code == 403:
+            return "Failed"
         vFile = open('video.mp4','wb')
         vFile.write(v.content)
         return 'video.mp4'
@@ -106,7 +109,7 @@ class Initialize:
                     link = "Failed" if gif == "Failed" else gif.makeGif(str(mention.submission))
                     try:
                         if link == "Failed":
-                            mention.reply('Sorry, I could not post the GIF to Imgur. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)')
+                            mention.reply('Sorry, I could not process your request. I gave up.\n\nI will try better in the future!\n\n^(I am a bot.)')
                         else:
                             mention.reply('Here is a [Link]('+link+') to the GIF that you requested.\n\n Right now I only do the first 5 seconds.\n\n^(I am a bot.)')
                     except Exception as e:
